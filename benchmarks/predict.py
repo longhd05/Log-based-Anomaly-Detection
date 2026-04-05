@@ -1,5 +1,6 @@
 from pathlib import Path
 from collections import OrderedDict
+import argparse
 import ast
 import re
 import sys
@@ -170,7 +171,33 @@ def predict(model, X, threshold=0.5):
 # =========================
 # MAIN
 # =========================
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Dự đoán bất thường từ file log (CSV hoặc NPZ) sử dụng model đã huấn luyện."
+    )
+    parser.add_argument(
+        "--file",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Đường dẫn đến file log cần Detect (hỗ trợ .csv và .npz). "
+            "Nếu không truyền, dùng file mặc định: data/HDFS/HDFS_100k.log_structured.csv"
+        ),
+    )
+    return parser.parse_args()
+
+
 def main():
+    args = parse_args()
+    input_file = Path(args.file) if args.file else INPUT_FILE
+
+    if not input_file.exists():
+        print(f"[ERROR] File không tồn tại: {input_file}")
+        sys.exit(1)
+
+    print(f"[INFO] Input file: {input_file}")
+
     model_path = resolve_model_path()
     bundle = load_bundle(model_path)
     model = bundle["model"]
@@ -180,7 +207,7 @@ def main():
 
     clf = get_classifier(model)
 
-    df_raw, block_ids, seqs, source_type = load_input(INPUT_FILE)
+    df_raw, block_ids, seqs, source_type = load_input(input_file)
     print("\n===== RESULT PREVIEW =====")
     print("Num samples     :", len(block_ids))
 
