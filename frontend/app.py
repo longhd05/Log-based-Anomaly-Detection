@@ -25,7 +25,6 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 500 * 1024 * 1024  # 500 MB
 
 ALLOWED_EXTENSIONS = {"csv", "npz"}
-MAX_TABLE_ROWS = 2000
 
 
 def allowed_file(filename: str) -> bool:
@@ -82,11 +81,9 @@ def detect():
         anomaly_count = int((pred_int == 1).sum())
         normal_count = total - anomaly_count
 
-        # Build row data for the table (cap at MAX_TABLE_ROWS)
-        truncated = total > MAX_TABLE_ROWS
-        n_display = min(total, MAX_TABLE_ROWS)
+        # Build row data for the table (all rows)
         rows = []
-        for i in range(n_display):
+        for i in range(total):
             rows.append(
                 {
                     "row": i + 1,
@@ -94,6 +91,7 @@ def detect():
                     "score": round(float(y_score[i]), 4),
                     "label": "anomaly" if pred_int[i] == 1 else "normal",
                     "is_anomaly": bool(pred_int[i] == 1),
+                    "events": seqs[i] if i < len(seqs) else [],
                 }
             )
 
@@ -104,7 +102,6 @@ def detect():
                 "normal_count": normal_count,
                 "source_type": source_type,
                 "rows": rows,
-                "truncated": truncated,
             }
         )
 
