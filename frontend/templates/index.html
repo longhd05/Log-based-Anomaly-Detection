@@ -560,7 +560,7 @@
       <div class="modal-meta" id="modal-meta"></div>
       <!-- Shown only for anomalous blocks: reference normal sequence -->
       <div id="modal-events-normal-section" style="display:none">
-        <div class="events-label" style="color:var(--normal-fg)">🟢 Chuỗi sự kiện bình thường (Event Sequence)</div>
+        <div class="events-label" style="color:var(--normal-fg)">🟢 Chuỗi sự kiện bình thường (Normal Event Sequence)</div>
         <div class="events-list" id="modal-events-normal" style="margin-bottom:14px"></div>
       </div>
       <!-- Block event sequence -->
@@ -911,7 +911,7 @@
     if (r.is_anomaly) {
       // Show normal reference section above the anomalous sequence
       normalSection.style.display = '';
-      eventsLabel.textContent = '🔴 Chuỗi sự kiện bất thường (Event Sequence)';
+      eventsLabel.textContent = '🔴 Chuỗi sự kiện bất thường (Anomalous Event Sequence)';
       eventsLabel.style.color = 'var(--anomaly-fg)';
 
       const anomSet   = new Set(events.map(String));
