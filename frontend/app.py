@@ -49,7 +49,9 @@ def detect():
     if not allowed_file(file.filename):
         return jsonify({"error": "Chỉ hỗ trợ file .csv và .npz."}), 400
 
-    suffix = Path(file.filename).suffix.lower()
+    # Use a hardcoded suffix derived from validated extension to avoid path injection
+    ext = file.filename.rsplit(".", 1)[1].lower()
+    suffix = ".csv" if ext == "csv" else ".npz"
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -107,7 +109,8 @@ def detect():
         )
 
     except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
+        app.logger.error("Detection error: %s", exc, exc_info=True)
+        return jsonify({"error": "Lỗi xử lý: " + type(exc).__name__}), 500
 
     finally:
         if tmp_path and tmp_path.exists():
@@ -115,4 +118,5 @@ def detect():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(debug=debug, host="0.0.0.0", port=5000)

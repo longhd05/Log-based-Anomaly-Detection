@@ -301,6 +301,9 @@ python benchmarks/HDFS_benchmark_save_models.py
 ```bash
 # Từ thư mục gốc của dự án
 python frontend/app.py
+
+# (tuỳ chọn) bật chế độ debug khi phát triển
+FLASK_DEBUG=1 python frontend/app.py
 ```
 
 Server khởi động tại **http://localhost:5000**.
