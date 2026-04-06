@@ -370,9 +370,50 @@
       font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
       font-weight: 600;
       border: 1px solid;
+      position: relative;
+      cursor: default;
     }
-    .event-chip.ev-normal { background: rgba(34,197,94,.1); border-color: rgba(34,197,94,.3); color: #4ade80; }
+    .event-chip.ev-normal  { background: rgba(34,197,94,.1);  border-color: rgba(34,197,94,.3);  color: #4ade80; }
+    .event-chip.ev-anomaly { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.4);  color: #f87171; }
+    .event-chip.ev-missing { background: rgba(100,100,100,.08); border-color: rgba(100,100,100,.25); color: #6b7280; text-decoration: line-through; }
     .events-empty { color: var(--muted); font-size: .88rem; }
+
+    /* ─── EVENT TOOLTIP ───────────────────────────── */
+    .event-chip[data-tooltip]::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e2430;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: .75rem;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      font-weight: 400;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity .15s;
+    }
+    .event-chip[data-tooltip]::before {
+      content: '';
+      position: absolute;
+      bottom: calc(100% + 1px);
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: var(--border);
+      pointer-events: none;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity .15s;
+    }
+    .event-chip[data-tooltip]:hover::after,
+    .event-chip[data-tooltip]:hover::before { opacity: 1; }
     .block-interpretation {
       margin-top: 16px;
       padding: 12px 16px;
@@ -517,7 +558,13 @@
     </div>
     <div class="modal-body">
       <div class="modal-meta" id="modal-meta"></div>
-      <div class="events-label">Chuỗi sự kiện (Event Sequence)</div>
+      <!-- Shown only for anomalous blocks: reference normal sequence -->
+      <div id="modal-events-normal-section" style="display:none">
+        <div class="events-label" style="color:var(--normal-fg)">🟢 Chuỗi sự kiện bình thường (Event Sequence)</div>
+        <div class="events-list" id="modal-events-normal" style="margin-bottom:14px"></div>
+      </div>
+      <!-- Block event sequence -->
+      <div class="events-label" id="modal-events-label">Chuỗi sự kiện (Event Sequence)</div>
       <div class="events-list" id="modal-events"></div>
       <div class="block-interpretation" id="modal-interpretation"></div>
     </div>
@@ -539,6 +586,75 @@
   let filteredRows = [];
   let currentFilter = 'all';
   let currentPage = 1;
+  let normalRepSequence = [];
+
+  // ── HDFS event descriptions ──────────────────────────────────
+  const EVENT_DESCRIPTIONS = {
+    'E2':  'Xác minh block thành công',
+    'E3':  'Gửi block đến client',
+    'E5':  'Bắt đầu nhận block',
+    'E6':  'Nhận block hoàn tất',
+    'E7':  'Lỗi khi ghi block',
+    'E8':  'PacketResponder bị ngắt',
+    'E9':  'Nhận block thành công',
+    'E10': 'Ngoại lệ PacketResponder',
+    'E11': 'PacketResponder kết thúc',
+    'E13': 'Nhận gói tin trống',
+    'E14': 'Lỗi trong quá trình nhận block',
+    'E15': 'Điều chỉnh offset file block',
+    'E16': 'Truyền block đến node khác',
+    'E18': 'Bắt đầu luồng truyền block',
+    'E21': 'Xóa block',
+    'E22': 'NameNode cấp phát block mới',
+    'E25': 'NameNode yêu cầu sao chép block',
+    'E26': 'Cập nhật blockMap NameNode',
+    'E27': 'Yêu cầu lưu block trùng lặp',
+  };
+
+  function getEventDesc(ev) {
+    return EVENT_DESCRIPTIONS[String(ev)] || null;
+  }
+
+  // ── compute representative normal sequence ───────────────────
+  function computeNormalRepSequence() {
+    const normalRows = allRows.filter(r => !r.is_anomaly);
+    if (normalRows.length === 0) return [];
+    const seqMap = {};
+    normalRows.forEach(r => {
+      const key = (r.events || []).join(',');
+      if (!seqMap[key]) seqMap[key] = { count: 0, events: r.events || [] };
+      seqMap[key].count++;
+    });
+    let best = null, bestCount = 0;
+    for (const k of Object.keys(seqMap)) {
+      if (seqMap[k].count > bestCount) {
+        bestCount = seqMap[k].count;
+        best = seqMap[k].events;
+      }
+    }
+    return best || [];
+  }
+
+  // ── render a list of event chips with optional diff ──────────
+  // mode: 'plain' | 'anomalous' (highlight extras) | 'normal-ref' (highlight missing)
+  function renderEventChips(events, refSet, mode) {
+    if (!events || events.length === 0) {
+      return '<span class="events-empty">Không có dữ liệu sự kiện.</span>';
+    }
+    return events.map(ev => {
+      const desc    = getEventDesc(ev);
+      const tooltip = desc ? ` data-tooltip="${escHtml(desc)}"` : '';
+      let cls = 'event-chip';
+      if (mode === 'anomalous' && refSet && !refSet.has(String(ev))) {
+        cls += ' ev-anomaly';
+      } else if (mode === 'normal-ref' && refSet && !refSet.has(String(ev))) {
+        cls += ' ev-missing';
+      } else {
+        cls += ' ev-normal';
+      }
+      return `<span class="${cls}"${tooltip}>${escHtml(String(ev))}</span>`;
+    }).join('');
+  }
 
   // ── file selection ──────────────────────────────────────────
   fileInput.addEventListener('change', () => {
@@ -627,6 +743,7 @@
     allRows = data.rows;
     currentFilter = 'all';
     currentPage = 1;
+    normalRepSequence = computeNormalRepSequence();
     document.querySelectorAll('.filter-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.filter === 'all');
     });
@@ -785,14 +902,27 @@
       </div>`;
 
     // Events
-    const eventsEl = document.getElementById('modal-events');
+    const eventsEl       = document.getElementById('modal-events');
+    const eventsLabel    = document.getElementById('modal-events-label');
+    const normalSection  = document.getElementById('modal-events-normal-section');
+    const normalEventsEl = document.getElementById('modal-events-normal');
     const events = r.events || [];
-    if (events.length === 0) {
-      eventsEl.innerHTML = '<span class="events-empty">Không có dữ liệu sự kiện.</span>';
+
+    if (r.is_anomaly) {
+      // Show normal reference section above the anomalous sequence
+      normalSection.style.display = '';
+      eventsLabel.textContent = '🔴 Chuỗi sự kiện bất thường (Event Sequence)';
+      eventsLabel.style.color = 'var(--anomaly-fg)';
+
+      const anomSet   = new Set(events.map(String));
+      const normalSet = new Set(normalRepSequence.map(String));
+      normalEventsEl.innerHTML = renderEventChips(normalRepSequence, anomSet,   'normal-ref');
+      eventsEl.innerHTML       = renderEventChips(events,            normalSet, 'anomalous');
     } else {
-      eventsEl.innerHTML = events.map(ev =>
-        `<span class="event-chip ev-normal">${escHtml(String(ev))}</span>`
-      ).join('');
+      normalSection.style.display = 'none';
+      eventsLabel.textContent = 'Chuỗi sự kiện (Event Sequence)';
+      eventsLabel.style.color = '';
+      eventsEl.innerHTML = renderEventChips(events, null, 'plain');
     }
 
     // Interpretation
